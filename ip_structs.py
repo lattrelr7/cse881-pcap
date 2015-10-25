@@ -24,6 +24,15 @@ ICMPT_ROUTER_AD = 9
 ICMPT_ROUTER_DISC = 10
 ICMPT_TIMEOUT = 11
 
+# Struct sizes
+IPV4_HDR_LEN = 20
+IPV6_HDR_LEN = 40
+UDP_HDR_LEN = 8
+TCP_HDR_LEN = 20
+ICMP_HDR_LEN = 8
+FRAME_HDR_LEN = 14
+ARP_HDR_LEN = 28
+
 #Pcap structures
 class timeval_t(Structure):
     _fields_ = [('tv_sec', c_long),

@@ -39,23 +39,62 @@ def process_packet(pktheader, pktdata):
     #print(timestamp, pktdata)
 
     # Assume first 14 bytes are frame header
-    frame_header = eth_frame_header_t.from_buffer(pktdata[:14])
-    print("mac src", hex(frame_header.mac_src_1), hex(frame_header.mac_src_2), hex(frame_header.mac_src_3))
-    print("mac dst", hex(frame_header.mac_dst_1), hex(frame_header.mac_dst_2), hex(frame_header.mac_dst_3))
-    print("ethertype", hex(frame_header.ethertype))
-    
-    if(frame_header.ethertype == ET_ARP): 
+    ether_type = process_frame(pktdata)
+    offset = FRAME_HDR_LEN
+    if(ether_type == ET_ARP): 
         print("ARP!")
         
-    elif(frame_header.ethertype == ET_IPv4): 
-        print("IPv4!") 
-        #TODO Verify it is version 4 and is only size 20
-        #TODO handle fragments - don't need the data, just need to find final size.
-        #ip_header = ipv4_header_t.from_buffer(pktdata[14:34])
-        #print("ip src")
-        #print("ip dst")        
-    
-    elif(frame_header.ethertype == ET_IPv6): 
-        print("IPv6!")
+    elif(ether_type == ET_IPv4): 
+        ip_type = process_ipv4(pktdata, offset)
+        offset += IPV4_HDR_LEN
+        if(ip_type == IPT_UDP):
+            process_udp(pktdata, offset)
+            offset += UDP_HDR_LEN
+            
+    elif(ether_type == ET_IPv6): 
+        ip_type = process_ipv6(pktdata, offset)
+        offset += IPV6_HDR_LEN
+        if(ip_type == IPT_UDP):
+            process_udp(pktdata, offset)
+            offset += UDP_HDR_LEN
+        
+def process_frame(pktdata):
+    frame_header = eth_frame_header_t.from_buffer(pktdata[:FRAME_HDR_LEN])
+    #print("mac src", hex(frame_header.mac_src_1), hex(frame_header.mac_src_2), hex(frame_header.mac_src_3))
+    #print("mac dst", hex(frame_header.mac_dst_1), hex(frame_header.mac_dst_2), hex(frame_header.mac_dst_3))
+    #print("ethertype", hex(frame_header.ethertype))
+    return frame_header.ethertype
 
+def process_ipv4(pktdata, offset):
+    print("IPv4!") 
+    ip_header = ipv4_header_t.from_buffer(pktdata[offset:offset+IPV4_HDR_LEN])
+    #print("ip src", hex(ip_header.src_ip))
+    #print("ip dst", hex(ip_header.dst_ip)) 
+    #TODO Verify it is version 4 and is only size 20
+    #TODO handle fragments - don't need the data, just need to find final size.
+    return ip_header.protocol
+
+def process_ipv6(pktdata, offset):
+    print("IPv6!") 
+    ip_header = ipv6_header_t.from_buffer(pktdata[offset:offset+IPV6_HDR_LEN])
+    return ip_header.next_header
+
+def process_arp(pktdata, offset):
+    type = 0
+    return type
+
+def process_icmp(pktdata, offset):
+    type = 0
+    return type
+
+def process_udp(pktdata, offset):
+    print("UDP!") 
+    udp_header = udp_header_t.from_buffer(pktdata[offset:offset+UDP_HDR_LEN])
+    print("src port", udp_header.src_port)
+    print("dst port", udp_header.dst_port) 
+
+def process_tcp(pktdata, offset):
+    type = 0
+    return type
+    
 if __name__ == "__main__": main()
