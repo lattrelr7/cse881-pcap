@@ -32,6 +32,36 @@ def main():
             status = wpcap.pcap_next_ex(pcap_handle, ctypes.byref(pkthdr_ptr), ctypes.byref(pktdata_ptr))
     else:
         print("Failed to open file: ", err_buf.value.decode())
+        
+class SessionFeatures(object):
+    def __init__(self):
+        bytes_rxed = 0
+        bytes_txed = 0
+        src_ports = set()
+        dst_ports = set()
+        tcp_syn_count = 0
+        tcp_ack_count = 0
+        tcp_rst_count = 0
+        ip_protocol = 0
+    
+#Use dest/src IP as key - IP that is not mine - take in IP as parameter 
+#How to handle arp? Could limit to TCP/IP traffic only. Should limit.
+#How to handle multiple sessions...if last rxed packet past some configurable time, create new session.
+session_features = {} 
+
+# Return the session features.
+# Maintain session <--> ip mappings.  This will determine if time for session
+# has expired.  If session has expired create new key and SessionFeatures object for mapping to ip
+# Session ID can just be a hash that is mapped to IP.  Current
+# session ID will be returned on lookup.
+def get_session(foreign_ip):
+    # if no session or session expired
+    #     session_key[foreign_ip:protocol] = hash(time.now())
+    #     session_key_map[session_key[foreign_ip:protocol]] = SessionFeatures()
+    # return session_key_map[session_key[foreign_ip:protocol]]
+    session_keys = {}
+    session_key_feature_map = {}
+    pass
     
 def process_packet(pktheader, pktdata):
     timestamp = pktheader.ts.tv_sec + (pktheader.ts.tv_usec / 1000000)
@@ -96,5 +126,11 @@ def process_udp(pktdata, offset):
 def process_tcp(pktdata, offset):
     type = 0
     return type
+
+def sql_2_libsvm():
+    #Turn sql data into lib svm format
+    #lib svm format: <label> <feature_idx>:<feature_value> <feature_idx>:<feature_value> ...
+    #also scale any non-binary data from 0 to 1.
+    return
     
 if __name__ == "__main__": main()
