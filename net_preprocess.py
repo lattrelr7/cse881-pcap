@@ -122,19 +122,16 @@ def insert_sessions_into_sql(label):
                   session.icmp_redirect_count,
                   session.icmp_timeout_count))
         
-        #for src_port in session.src_ports:
-        #    try:
-        #        c.execute("ALTER TABLE samples ADD COLUMN 'src_port_%s' 'int'" % str(src_port))
-        #    except sqlite3.OperationalError:
-        #        pass
-        #    c.execute('''UPDATE samples SET src_port_%s=1 WHERE uuid=%s''' % (str(src_port), str(hash(key))))
-        for dst_port in session.dst_ports:
-            show_progress()
-            try:
-                c.execute("ALTER TABLE samples ADD COLUMN 'dst_port_%s' 'int'" % str(dst_port))
-            except sqlite3.OperationalError:
-                pass       
-            c.execute('''UPDATE samples SET dst_port_%s=1 WHERE uuid=%s''' % (str(dst_port), str(hash(key))))     
+        ports = session.dst_ports
+        for port in ports:
+            #Only add if not ephemeral port
+            if(port < 49152):
+                show_progress()
+                try:
+                    c.execute("ALTER TABLE samples ADD COLUMN 'port_%s' int" % str(port))
+                except sqlite3.OperationalError:
+                    pass
+                c.execute('''UPDATE samples SET port_%s=1 WHERE uuid=%s''' % (str(port), str(hash(key))))  
             
         if(label):
             print("******LABEL CLASS*******")
@@ -377,11 +374,5 @@ def process_tcp(pktdata, offset, session):
         session.tcp_syn_count += 1
     if(tcp_header.offset_type & TCP_RST):
         session.tcp_rst_count += 1
-
-def sql_2_libsvm():
-    #Turn sql data into lib svm format
-    #lib svm format: <label> <feature_idx>:<feature_value> <feature_idx>:<feature_value> ...
-    #also scale any non-binary data from 0 to 1.
-    return
     
 if __name__ == "__main__": main()
