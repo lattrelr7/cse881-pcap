@@ -13,6 +13,7 @@ IPT_ICMP = 0x01
 IPT_TCP = 0x06
 IPT_UDP = 0x11
 IPT_IPv6 = 0x29
+IPT_IGMP = 0x02
 
 # ICMP types that we handle
 # These are found in the ICMP header

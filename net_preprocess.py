@@ -29,7 +29,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("pcap_file", type=str, help="Wireshark capture in tcpdump format.")
     parser.add_argument("nic_ip", type=str, help="Capture NICs IP address.")
-    parser.add_argument("--label", action="store_true", help="Label samples as they are inserted?")
+    parser.add_argument("-label", type=str, help="Label samples as they are inserted?")
     parser.add_argument("--skipdb", action="store_true", help="Don't update db, just print samples")
     args = parser.parse_args()
     
@@ -73,9 +73,13 @@ def main():
         # Create samples.db if it doesn't exist, then insert sessions
         if(not os.path.exists("samples.db")):
             create_sql_db()     
-        insert_sessions_into_sql(args.label)
+        insert_sessions_into_samples(args.label)
+        insert_sessions_into_tcp_samples(args.label)
+        insert_sessions_into_udp_samples(args.label)
+        insert_sessions_into_icmp_samples(args.label)
         
-def insert_sessions_into_sql(label):
+        
+def insert_sessions_into_samples(label):
     """ Insert the session objects into the samples.db database
     in a format that hopefully makes sense for mining applications
     
@@ -91,9 +95,11 @@ def insert_sessions_into_sql(label):
                     (uuid,
                     bytes_txed,
                     bytes_rxed,
+                    interarrival_time,
                     udp_protocol,
                     tcp_protocol,
                     icmp_protocol,
+                    igmp_protocol,
                     src_port_cnt,
                     dst_port_cnt,
                     tcp_syn_cnt,
@@ -104,13 +110,15 @@ def insert_sessions_into_sql(label):
                     icmp_unreachable_cnt,
                     icmp_redirect_cnt,
                     icmp_timeout_cnt)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                   (hash(key),
                   session.bytes_txed,
                   session.bytes_rxed,
+                  session.arrival_diff_avg,
                   int(session.ip_protocol == IPT_UDP),
                   int(session.ip_protocol == IPT_TCP),
                   int(session.ip_protocol == IPT_ICMP),
+                  int(session.ip_protocol == IPT_IGMP),
                   len(session.src_ports),
                   len(session.dst_ports),
                   session.tcp_syn_count,
@@ -123,21 +131,157 @@ def insert_sessions_into_sql(label):
                   session.icmp_timeout_count))
         
         ports = session.dst_ports
-        for port in ports:
-            #Only add if not ephemeral port
-            if(port < 49152):
-                show_progress()
-                try:
-                    c.execute("ALTER TABLE samples ADD COLUMN 'port_%s' int" % str(port))
-                except sqlite3.OperationalError:
-                    pass
-                c.execute('''UPDATE samples SET port_%s=1 WHERE uuid=%s''' % (str(port), str(hash(key))))  
+        if(len(session.dst_ports) <= 5): # If we save this info from a port scan it messes up distance measures
+            for port in ports:
+                #Only add if not ephemeral port
+                if(port < 49152):
+                    show_progress()
+                    try:
+                        c.execute("ALTER TABLE samples ADD COLUMN 'port_%s' int" % str(port))
+                    except sqlite3.OperationalError:
+                        pass
+                    c.execute('''UPDATE samples SET port_%s=1 WHERE uuid=%s''' % (str(port), str(hash(key))))  
+                
+        if(label is not None):
+            c.execute('''UPDATE samples SET class='%s' WHERE uuid=%s''' % (label, str(hash(key)))) 
             
-        if(label):
-            print("******LABEL CLASS*******")
-            print(session)
-            sample_class = input("Class?<<")
-            c.execute('''UPDATE samples SET class='%s' WHERE uuid=%s''' % (sample_class, str(hash(key)))) 
+    conn.commit()
+    conn.close()
+    
+def insert_sessions_into_tcp_samples(label):
+    """ Insert the session objects into the samples.db database
+    in a format that hopefully makes sense for mining applications
+    
+    args:
+        label(bool): Prompt for class type when inserting a row
+    """
+    conn = sqlite3.connect('samples.db')
+    c = conn.cursor()
+
+    for key, session in session_key_feature_map.items():
+        if(session.ip_protocol != IPT_TCP): continue
+        show_progress()
+        c.execute('''INSERT INTO tcp_samples 
+                    (uuid,
+                    bytes_txed,
+                    bytes_rxed,
+                    interarrival_time,
+                    src_port_cnt,
+                    dst_port_cnt,
+                    tcp_syn_cnt,
+                    tcp_rst_cnt,
+                    tcp_ack_cnt)
+                    VALUES (?,?,?,?,?,?,?,?,?)''',
+                  (hash(key),
+                  session.bytes_txed,
+                  session.bytes_rxed,
+                  session.arrival_diff_avg,
+                  len(session.src_ports),
+                  len(session.dst_ports),
+                  session.tcp_syn_count,
+                  session.tcp_rst_count,
+                  session.tcp_ack_count))
+        
+        ports = session.dst_ports
+        if(len(session.dst_ports) <= 5): # If we save this info from a port scan it messes up distance measures
+            for port in ports:
+                #Only add if not ephemeral port
+                if(port < 49152):
+                    show_progress()
+                    try:
+                        c.execute("ALTER TABLE tcp_samples ADD COLUMN 'port_%s' int" % str(port))
+                    except sqlite3.OperationalError:
+                        pass
+                    c.execute('''UPDATE tcp_samples SET port_%s=1 WHERE uuid=%s''' % (str(port), str(hash(key))))  
+                
+        if(label is not None):
+            c.execute('''UPDATE tcp_samples SET class='%s' WHERE uuid=%s''' % (label, str(hash(key)))) 
+            
+    conn.commit()
+    conn.close()
+    
+def insert_sessions_into_udp_samples(label):
+    """ Insert the session objects into the samples.db database
+    in a format that hopefully makes sense for mining applications
+    
+    args:
+        label(bool): Prompt for class type when inserting a row
+    """
+    conn = sqlite3.connect('samples.db')
+    c = conn.cursor()
+
+    for key, session in session_key_feature_map.items():
+        if(session.ip_protocol != IPT_UDP): continue
+        show_progress()
+        c.execute('''INSERT INTO udp_samples 
+                    (uuid,
+                    bytes_txed,
+                    bytes_rxed,
+                    interarrival_time,
+                    src_port_cnt,
+                    dst_port_cnt)
+                    VALUES (?,?,?,?,?,?)''',
+                  (hash(key),
+                  session.bytes_txed,
+                  session.bytes_rxed,
+                  session.arrival_diff_avg,
+                  len(session.src_ports),
+                  len(session.dst_ports)))
+        
+        ports = session.dst_ports
+        if(len(session.dst_ports) <= 5): # If we save this info from a port scan it messes up distance measures
+            for port in ports:
+                #Only add if not ephemeral port
+                if(port < 49152):
+                    show_progress()
+                    try:
+                        c.execute("ALTER TABLE udp_samples ADD COLUMN 'port_%s' int" % str(port))
+                    except sqlite3.OperationalError:
+                        pass
+                    c.execute('''UPDATE udp_samples SET port_%s=1 WHERE uuid=%s''' % (str(port), str(hash(key))))  
+                
+        if(label is not None):
+            c.execute('''UPDATE udp_samples SET class='%s' WHERE uuid=%s''' % (label, str(hash(key)))) 
+            
+    conn.commit()
+    conn.close()
+    
+def insert_sessions_into_icmp_samples(label):
+    """ Insert the session objects into the samples.db database
+    in a format that hopefully makes sense for mining applications
+    
+    args:
+        label(bool): Prompt for class type when inserting a row
+    """
+    conn = sqlite3.connect('samples.db')
+    c = conn.cursor()
+
+    for key, session in session_key_feature_map.items():
+        if(session.ip_protocol != IPT_ICMP): continue
+        show_progress()
+        c.execute('''INSERT INTO icmp_samples 
+                    (uuid,
+                    bytes_txed,
+                    bytes_rxed,
+                    interarrival_time,
+                    icmp_echo_cnt,
+                    icmp_reply_cnt,
+                    icmp_unreachable_cnt,
+                    icmp_redirect_cnt,
+                    icmp_timeout_cnt)
+                    VALUES (?,?,?,?,?,?,?,?,?)''',
+                  (hash(key),
+                  session.bytes_txed,
+                  session.bytes_rxed,
+                  session.arrival_diff_avg,
+                  session.icmp_echo_count,
+                  session.icmp_reply_count,
+                  session.icmp_unreachable_count,
+                  session.icmp_redirect_count,
+                  session.icmp_timeout_count)) 
+        
+        if(label is not None):
+            c.execute('''UPDATE icmp_samples SET class='%s' WHERE uuid=%s''' % (label, str(hash(key))))
             
     conn.commit()
     conn.close()
@@ -153,9 +297,11 @@ def create_sql_db():
                 class text,
                 bytes_txed int,
                 bytes_rxed int,
+                interarrival_time real,
                 udp_protocol int,
                 tcp_protocol int,
                 icmp_protocol int,
+                igmp_protocol int,
                 src_port_cnt int,
                 dst_port_cnt int,
                 tcp_syn_cnt int,
@@ -166,6 +312,40 @@ def create_sql_db():
                 icmp_unreachable_cnt int,
                 icmp_redirect_cnt int,
                 icmp_timeout_cnt int)''')
+    
+    c.execute('''CREATE TABLE tcp_samples
+               (uuid int primary key,
+                class text,
+                bytes_txed int,
+                bytes_rxed int,
+                interarrival_time real,
+                src_port_cnt int,
+                dst_port_cnt int,
+                tcp_syn_cnt int,
+                tcp_rst_cnt int,
+                tcp_ack_cnt int)''')
+    
+    c.execute('''CREATE TABLE udp_samples
+               (uuid int primary key,
+                class text,
+                bytes_txed int,
+                bytes_rxed int,
+                interarrival_time real,
+                src_port_cnt int,
+                dst_port_cnt int)''')
+    
+    c.execute('''CREATE TABLE icmp_samples
+               (uuid int primary key,
+                class text,
+                bytes_txed int,
+                bytes_rxed int,
+                interarrival_time real,
+                icmp_echo_cnt int,
+                icmp_reply_cnt int,
+                icmp_unreachable_cnt int,
+                icmp_redirect_cnt int,
+                icmp_timeout_cnt int)''')
+    
     conn.commit()
     conn.close()
     
@@ -193,6 +373,8 @@ class SessionFeatures(object):
         # Helper fields
         self.current_direction = OUTGOING
         self.last_timestamp = 0
+        self.arrival_diff_avg = 0;
+        self.num_packets = 0;
         
     def __str__(self):
         print_this = "bytes_rxed: " + str(self.bytes_rxed) + "\n"
@@ -228,6 +410,7 @@ def get_session(foreign_ip, protocol, timestamp):
         # and create new SessionFeatures object
         new_session_key = uuid.uuid4()
         session = SessionFeatures()
+        session.ip_protocol = protocol
         session_keys[key_str] = new_session_key
         session_key_feature_map[new_session_key] = session
     # Otherwise our session is the existing one
@@ -235,8 +418,15 @@ def get_session(foreign_ip, protocol, timestamp):
         session = session_key_feature_map[session_keys[key_str]]
         
     # Update the timestamp for this session
-    session.last_timestamp = timestamp
-    session.ip_protocol = protocol
+    session.num_packets += 1;
+    if(session.num_packets > 2):
+        # On-line avg calculation...avg = sum / n; sum = avg * n 
+        # -- recover sum from avg and n, then plus 1 
+        session.arrival_diff_avg = ((session.arrival_diff_avg * (session.num_packets - 1)) 
+            + (timestamp - session.last_timestamp)) / session.num_packets
+    elif(session.num_packets == 2):
+        session.arrival_diff_avg = timestamp - session.last_timestamp
+    session.last_timestamp = timestamp 
     
     return session
             
